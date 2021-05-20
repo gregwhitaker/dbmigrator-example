@@ -1,0 +1,137 @@
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+
+plugins {
+    id "idea"
+    id "java"
+    id "application"
+    id "maven-publish"
+    id "com.avast.gradle.docker-compose"                    version "0.10.9"
+    id "com.bmuschko.docker-remote-api"                     version "3.4.4"
+    id "org.unbroken-dome.test-sets"                        version "3.0.1"
+    id "com.adarshr.test-logger"                            version "2.1.0"
+    id "com.github.gregwhitaker.dbmigrator.flywayutils"
+}
+
+// Project Configuration
+project.description = "Manages database migration scripts and database versioning"
+project.group       = "com.github.gregwhitaker"
+project.version     = "0.1.0"
+project.ext.name    = "dbmigrator"
+project.ext.scm     = "scm:git@github.com/gregwhitaker/dbmigrator.git"
+project.ext.url     = "https://github.com/gregwhitaker/dbmigrator.git"
+
+// Application Configuration
+project.mainClassName = "com.github.gregwhitaker.dbmigrator.DatabaseMigrator"
+
+// Local Database Configuration
+project.ext.databaseJdbcUrl = "jdbc:postgresql://localhost:5432/postgres"
+project.ext.databaseEnv     = "local"
+project.ext.databaseUser    = "postgres"
+project.ext.databasePwd     = "changeme"
+
+// Dependency Management
+repositories {
+    jcenter()
+    mavenCentral()
+}
+
+dependencies {
+    // Internal
+    implementation "com.github.gregwhitaker:envopts:1.0.0"
+    implementation "com.zaxxer:HikariCP:3.4.5"
+    implementation "info.picocli:picocli:4.1.4"
+    implementation "org.apache.commons:commons-lang3:3.11"
+    implementation "org.flywaydb:flyway-core:6.0.8"
+    implementation "org.slf4j:slf4j-api:1.7.30"
+
+    // Runtime
+    runtime "org.postgresql:postgresql:42.2.18"
+    runtime "org.slf4j:slf4j-simple:1.7.30"
+
+    // Test
+    testImplementation "com.github.stefanbirkner:system-rules:1.19.0"
+    testImplementation "com.squareup:javapoet:1.13.0"
+    testImplementation "junit:junit:4.12"
+    testImplementation "org.dbunit:dbunit:2.7.0"
+    testImplementation "org.projectlombok:lombok:1.18.12"
+    testImplementation "org.reflections:reflections:0.9.12"
+
+    testAnnotationProcessor "org.projectlombok:lombok:1.18.12"
+}
+
+// Artifacts
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+// Integration Testing
+testSets {
+    integration
+}
+integration.include("**/IntegrationTestSuite.*")
+
+task generateTableIntegTest (type: JavaExec, group: 'Test') {
+    description('Generates an integration test skeleton for a database table.')
+    dependsOn('migrateDb')
+    main = 'com.github.gregwhitaker.dbmigrator.util.TableIntegTestCreator'
+    classpath = sourceSets.integration.runtimeClasspath
+}
+
+// Docker Compose
+dockerCompose {
+    useComposeFiles = [ "${projectDir}/docker/docker-compose-postgres.yml" ]
+}
+dockerCompose.isRequiredBy(integration)
+
+// Docker
+task buildImage(type: DockerBuildImage) {
+    dependsOn('build')
+    mustRunAfter('build')
+    description('Builds the executable jar version of the application as a Docker image.')
+    buildArgs = ['APP_NAME': "${project.ext.name}-${version}"]
+    dockerFile = file("${projectDir}/src/docker/Dockerfile")
+    inputDir = file("${projectDir}")
+    tags = ["${project.group}/${project.ext.name}", "${project.group}/${project.ext.name}:${version}"]
+}
+
+// Local Development
+task cleanDb (type: JavaExec, group: 'Database Migration') {
+    description('Cleans the database.')
+    dependsOn('composeUp')
+    main = "${project.mainClassName}"
+    args = ['--jdbc-url', "${databaseJdbcUrl}",
+            '--username', "${databaseUser}",
+            '--password', "${databasePwd}",
+            '--env', "${databaseEnv}",
+            '--clean-no-migrate']
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task migrateDb (type: JavaExec, group: 'Database Migration') {
+    description('Runs the database migration.')
+    dependsOn('composeUp')
+    main = "${project.mainClassName}"
+    args = ['--jdbc-url', "${databaseJdbcUrl}",
+            '--username', "${databaseUser}",
+            '--password', "${databasePwd}",
+            '--env', "${databaseEnv}"]
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task cleanMigrateDb (type: JavaExec, group: 'Database Migration') {
+    description('Cleans the database and then runs the migration.')
+    dependsOn('composeUp')
+    main = "${project.mainClassName}"
+    args = ['--jdbc-url', "${databaseJdbcUrl}",
+            '--username', "${databaseUser}",
+            '--password', "${databasePwd}",
+            '--env', "${databaseEnv}",
+            '--clean-migrate']
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+task killDb {
+    description('Terminates the database container and deletes volumes.')
+    dependsOn('composeDownForced')
+}
