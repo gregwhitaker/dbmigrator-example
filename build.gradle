@@ -9,6 +9,7 @@ plugins {
     id "com.bmuschko.docker-remote-api"                     version "3.4.4"
     id "org.unbroken-dome.test-sets"                        version "3.0.1"
     id "com.adarshr.test-logger"                            version "2.1.0"
+    id "com.github.gregwhitaker.gitignore"                  version "2.0.0"
     id "com.github.gregwhitaker.dbmigrator.flywayutils"
 }
 
@@ -16,7 +17,7 @@ plugins {
 project.description = "Manages database migration scripts and database versioning"
 project.group       = "com.github.gregwhitaker"
 project.version     = "0.1.0"
-project.ext.name    = "dbmigrator"
+project.ext.name    = "dbmigrator-example"
 project.ext.scm     = "scm:git@github.com/gregwhitaker/dbmigrator.git"
 project.ext.url     = "https://github.com/gregwhitaker/dbmigrator.git"
 
@@ -74,7 +75,7 @@ integration.include("**/IntegrationTestSuite.*")
 task generateTableIntegTest (type: JavaExec, group: 'Test') {
     description('Generates an integration test skeleton for a database table.')
     dependsOn('migrateDb')
-    main = 'com.github.gregwhitaker.dbmigrator.util.TableIntegTestCreator'
+    main = 'com.github.gregwhitaker.dbmigrator.util.TableIntegrationTestCreator'
     classpath = sourceSets.integration.runtimeClasspath
 }
 
